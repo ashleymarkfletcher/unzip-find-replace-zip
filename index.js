@@ -1,70 +1,76 @@
 const path = require('path')
-const fs = require('fs')
-const exec = require('child_process').exec
-//joining path of directory
-const directoryPath = path.join(__dirname, 'exports')
-//passsing directoryPath and callback function
-fs.readdir(directoryPath, function(err, files) {
-  //handling error
-  if (err) {
-    return console.log('Unable to scan directory: ' + err)
+const fs = require('fs').promises
+const util = require('util')
+const exec = util.promisify(require('child_process').exec)
+
+const initDirectory = process.argv[2] || 'exports'
+const directoryPath = path.join(__dirname, initDirectory)
+
+// TODO: make this an optional arg
+const toFind = [
+  { find: /<\/head>/g, replace: '</head><a href="javascript:window.open(window.clickTag)">' },
+  { find: /<\/body>/g, replace: '</body></a>' }
+]
+
+async function run() {
+  try {
+    console.log('starting :)')
+    const flatFiles = await walkFind(directoryPath)
+
+    const zips = flatFiles.filter(({ file }) => isZip(file))
+
+    const newZips = await Promise.all(zips.map(unzipEditZip))
+    console.log('done ;)')
+  } catch (error) {
+    console.log('error: ', error)
+  }
+}
+run()
+
+async function walkFind(dir) {
+  let results = []
+  const contents = await fs.readdir(dir)
+
+  for (const content of contents) {
+    const contentPath = path.join(dir, content)
+    const stats = await fs.stat(contentPath)
+
+    if (stats.isFile()) {
+      results.push({ file: content, path: contentPath, parent: dir })
+    } else if (stats.isDirectory()) {
+      const nextLayerFiles = await walkFind(contentPath)
+      results = [...results, ...nextLayerFiles]
+    }
   }
 
-  //listing all files using forEach
-  files.forEach(function(file) {
-    // Do whatever you want to do with the file
-    // console.log(file)
-    const fileDir = path.join(directoryPath, file)
+  return results
+}
 
-    fs.readdir(fileDir, function(err, files) {
-      //handling error
-      if (err) {
-        return console.log('Unable to scan directory: ' + err)
-      }
-      //listing all files using forEach
-      files.forEach(function(file) {
-        // Do whatever you want to do with the file
-        // console.log(file)
+async function unzipEditZip({ path, file }) {
+  const newDirName = file.split('.zip')[0]
 
-        if (isZip(file)) {
-          const zipPath = path.join(fileDir, file)
-          const zipName = file.split('.zip')[0]
-          // console.log('iszip: ', file)
-          const htmlFile = zipName + '.html'
-          const newDirName = zipName
+  await fs.mkdir(newDirName)
+  await exec(`unzip ${path} -d ${newDirName}`)
 
-          exec('mkdir ' + newDirName, function() {
-            // console.log('made dir: ', newDirName)
-            exec('unzip ' + zipPath + ' -d ' + newDirName, function() {
-              // console.log('unzipped: ', zipPath)
+  // TODO: add some sort of search for the type of file to update
+  const htmlFile = newDirName + '.html'
+  const htmlPath = newDirName + '/' + htmlFile
 
-              const htmlPath = newDirName + '/' + htmlFile
-              // console.log(htmlPath)
+  const html = await fs.readFile(htmlPath, 'utf8')
 
-              fs.readFile(htmlPath, 'utf8', function(err, data) {
-                if (err) {
-                  return console.log('err reading', err)
-                }
-                var result = data.replace(/<\/head>/g, '</head><a href="javascript:window.open(window.clickTag)">')
-                result = result.replace(/<\/body>/g, '</body></a>')
+  let result
 
-                fs.writeFile(htmlPath, result, 'utf8', function(err) {
-                  if (err) return console.log('err writing', err)
-                  // console.log('replaced')
-
-                  exec('cd ' + newDirName + ' && zip -r ../' + zipName + '.zip * -0 -q', function() {})
-                  // exec('zip -r ' + zipName + '.zip ' + newDirName, function() {
-                  //   console.log('zipped', zipName)
-                  // })
-                })
-              })
-            })
-          })
-        }
-      })
-    })
+  // make all the replacements one at a time
+  toFind.forEach(({ find, replace }) => {
+    result = result ? result.replace(find, replace) : html.replace(find, replace)
   })
-})
+
+  await fs.writeFile(htmlPath, result, 'utf8')
+
+  await exec(`cd ${newDirName} && zip -r ../${newDirName}.zip * -0 -q`)
+
+  // TODO: remove folders after? Maybe optional as a flag
+}
 
 function isZip(name) {
   return name.slice(-4) == '.zip'
