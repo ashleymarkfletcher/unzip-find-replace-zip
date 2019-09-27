@@ -72,6 +72,7 @@ async function unzipEditZip({ path, file }) {
   // TODO: remove folders after? Maybe optional as a flag
 }
 
+// TODO: add a more generic checker for file extensions
 function isZip(name) {
   return name.slice(-4) == '.zip'
 }
