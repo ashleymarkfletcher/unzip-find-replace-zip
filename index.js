@@ -3,14 +3,16 @@ const fs = require('fs').promises
 const util = require('util')
 const exec = util.promisify(require('child_process').exec)
 
-const initDirectory = process.argv[2] || 'exports'
+const initDirectory = process.argv[2] || 'testExports'
 const directoryPath = path.join(__dirname, initDirectory)
 
 // TODO: make this an optional arg
-const toFind = [
-  { find: /<\/head>/g, replace: '</head><a href="javascript:window.open(window.clickTag)">' },
-  { find: /<\/body>/g, replace: '</body></a>' }
-]
+// const toFind = [
+//   { find: /<\/head>/g, replace: '</head><a href="javascript:window.open(window.clickTag)">' },
+//   { find: /<\/body>/g, replace: '</body></a>' }
+// ]
+
+const toFind = [{ find: "window.open(window.clickTag, '_blank')", replace: '' }]
 
 async function run() {
   try {
@@ -25,6 +27,8 @@ async function run() {
     console.log('error: ', error)
   }
 }
+
+// TODO: export this so it can be used as a module then
 run()
 
 async function walkFind(dir) {
